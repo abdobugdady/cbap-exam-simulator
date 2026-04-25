@@ -1,0 +1,25 @@
+# Python build scripts (not needed for deployment)
+*.py
+__pycache__/
+*.pyc
+
+# macOS
+.DS_Store
+.AppleDouble
+.LSOverride
+
+# Windows
+Thumbs.db
+desktop.ini
+
+# Editor files
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# Logs
+*.log
+
+# Keep only index.html and README.md for clean deployment
+CBAP_Exam_Simulator.html
