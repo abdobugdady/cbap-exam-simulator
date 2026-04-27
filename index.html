@@ -55,6 +55,8 @@ nav{background:var(--bg2);border-bottom:1px solid var(--border);padding:0 20px;d
 .mode-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(200px,1fr));gap:14px}
 .mode-card{background:var(--bg2);border:1px solid var(--border);border-radius:12px;padding:22px;cursor:pointer;transition:all.2s;text-align:center}
 .mode-card:hover{border-color:var(--accent);transform:translateY(-2px);box-shadow:0 8px 24px rgba(88,166,255,.15)}
+.continue-card{border-color:var(--green);background:#0d2218}
+.continue-card:hover{border-color:var(--green)!important;box-shadow:0 8px 24px rgba(63,185,80,.2)!important}
 .mode-icon{font-size:32px;margin-bottom:10px}
 .mode-card h3{font-size:15px;font-weight:700;margin-bottom:4px}
 .mode-card p{font-size:11px;color:var(--text2)}
@@ -227,6 +229,7 @@ Continue with Google
 <h1>CBAP Exam Simulator</h1>
 <p>525+ Hard Questions · BABOK v3 · Progress synced to your account ☁️</p>
 <div class="mode-grid">
+<div class="mode-card continue-card hidden" id="continue-quiz-card" onclick="continueLastQuiz()"><div class="mode-icon">▶️</div><h3>Continue Quiz</h3><p id="continue-quiz-info">Resume where you left off</p></div>
 <div class="mode-card" onclick="startExamSetup()"><div class="mode-icon">📝</div><h3>Full Exam</h3><p>150 questions · 3.5 hours</p></div>
 <div class="mode-card" onclick="startQuizSetup()"><div class="mode-icon">⚡</div><h3>Quick Quiz</h3><p>20 questions · instant feedback</p></div>
 <div class="mode-card" onclick="showFlashcards()"><div class="mode-icon">🃏</div><h3>Flashcards</h3><p>80 key BABOK concepts</p></div>
@@ -399,7 +402,7 @@ const EXAM_SECS = 3.5 * 3600;
 // STATE (synced to Firestore)
 // ============================================================
 let currentUser = null;
-let state = { kaStats:{}, bestStreak:0, bestScore:0, examsTaken:0, answered:0, correct:0 };
+let state = { kaStats:{}, bestStreak:0, bestScore:0, examsTaken:0, answered:0, correct:0, lastQuizSession:null };
 let syncTimer = null;
 
 function initKAStats() {
@@ -463,7 +466,7 @@ auth.onAuthStateChanged(async user => {
   } else {
     document.getElementById('login-screen').classList.remove('hidden');
     document.getElementById('app').classList.add('hidden');
-    state = { kaStats:{}, bestStreak:0, bestScore:0, examsTaken:0, answered:0, correct:0 };
+    state = { kaStats:{}, bestStreak:0, bestScore:0, examsTaken:0, answered:0, correct:0, lastQuizSession:null };
     initKAStats();
   }
 });
@@ -489,6 +492,15 @@ function updateHome() {
   document.getElementById('stat-best').textContent = state.bestScore ? state.bestScore+'%' : '—';
   document.getElementById('streak-display').querySelector('span').textContent = state.bestStreak || 0;
   document.getElementById('total-display').querySelector('span').textContent = state.answered || 0;
+  const cc = document.getElementById('continue-quiz-card');
+  if (state.lastQuizSession) {
+    const s = state.lastQuizSession;
+    const kaLabel = s.kaSelected === 'ALL' ? 'All KAs' : s.kaSelected;
+    document.getElementById('continue-quiz-info').textContent = `Q${s.idx+1} of ${s.questionIds.length} · ${kaLabel} · ${s.correct} correct`;
+    cc.classList.remove('hidden');
+  } else {
+    cc.classList.add('hidden');
+  }
   const bars = document.getElementById('ka-bars');
   bars.innerHTML = '';
   KA_KEYS.forEach(ka => {
@@ -589,6 +601,7 @@ function submitExam() {
   state.correct=(state.correct||0)+correct;
   state.examsTaken=(state.examsTaken||0)+1;
   if(score>(state.bestScore||0)) state.bestScore=score;
+  state.lastQuizSession=null;
   scheduleSave();
   showResults(score,correct,examQ,kaS);
 }
@@ -609,6 +622,20 @@ function startQuiz() {
   let pool=quizKASelected==='ALL'?[...QUESTIONS]:QUESTIONS.filter(q=>q.ka===quizKASelected);
   quizQ=pool.sort(()=>Math.random()-.5).slice(0,20);
   quizIdx=0; quizAnswered=false; quizCorrect=0; currentStreak=0;
+  saveQuizSession();
+  showScreen('quiz-screen'); renderQuizQ();
+}
+function saveQuizSession() {
+  state.lastQuizSession = { questionIds:quizQ.map(q=>q.id), idx:quizIdx, correct:quizCorrect, streak:currentStreak, kaSelected:quizKASelected };
+  scheduleSave();
+}
+function continueLastQuiz() {
+  const s=state.lastQuizSession;
+  if(!s) return;
+  examMode='quiz';
+  quizKASelected=s.kaSelected||'ALL';
+  quizQ=s.questionIds.map(id=>QUESTIONS.find(q=>q.id===id)).filter(Boolean);
+  quizIdx=s.idx||0; quizCorrect=s.correct||0; currentStreak=s.streak||0; quizAnswered=false;
   showScreen('quiz-screen'); renderQuizQ();
 }
 function renderQuizQ() {
@@ -645,7 +672,7 @@ function quizAnswer(idx) {
   document.getElementById('live-streak').textContent=currentStreak;
   document.getElementById('quiz-next-btn').classList.remove('hidden');
 }
-function quizNext() { quizIdx++; if(quizIdx>=quizQ.length) showQuizResults(); else renderQuizQ(); }
+function quizNext() { quizIdx++; if(quizIdx>=quizQ.length) showQuizResults(); else { saveQuizSession(); renderQuizQ(); } }
 function showQuizResults() {
   const score=Math.round(quizCorrect/quizQ.length*100);
   state.examsTaken=(state.examsTaken||0)+1;
